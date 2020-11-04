@@ -1,0 +1,72 @@
+# docker-compose build && docker-compose up -d
+# If "docker-compose logs ckan" shows DB not ready, run "docker-compose restart ckan" a few times.
+version: "3"
+
+volumes:
+  ckan_storage:
+  pg_data:
+  solr_core:
+
+services:
+  ckan:
+    container_name: ckan
+    build:
+      context: ./ckan
+      dockerfile: Dockerfile-ckan
+      args:
+          - CKAN_SITE_URL=${CKAN_SITE_URL}
+          - CKAN_PORT=${CKAN_PORT}
+    links:
+      - pg_db
+      - solr
+      - redis
+    ports:
+      - "0.0.0.0:${CKAN_PORT}:5000"
+    environment:
+      # Defaults work with linked containers, change to use own Postgres, SolR, Redis or Datapusher
+      - CKAN_SQLALCHEMY_URL=postgresql://ckan:${POSTGRES_PASSWORD}@pg_db/ckan
+      - CKAN_DATASTORE_WRITE_URL=postgresql://ckan:${POSTGRES_PASSWORD}@pg_db/datastore
+      - CKAN_DATASTORE_READ_URL=postgresql://datastore_ro:${DATASTORE_READONLY_PASSWORD}@pg_db/datastore
+      - CKAN_SOLR_URL=http://solr:8983/solr/ckan
+      - CKAN_REDIS_URL=redis://redis:6379/1
+      - CKAN_SITE_URL=${CKAN_SITE_URL}
+      - CKAN_MAX_UPLOAD_SIZE_MB=${CKAN_MAX_UPLOAD_SIZE_MB}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - DS_RO_PASS=${DATASTORE_READONLY_PASSWORD}
+      - CKAN_PORT=${CKAN_PORT}
+
+    volumes:
+      - ckan_storage:/var/lib/ckan
+
+# Disabled until we can figure out a good way to do this...
+#  workers:
+#    # For jobs and/or harvest workers
+#    container_name: workers
+#    build:
+#      context: ./ckan
+#      dockerfile: Dockerfile-workers
+#    ports:
+#      - "8800:8800"
+
+  pg_db:
+    container_name: pg_db
+    build:
+      context: ./postgresql
+      args:
+        - DS_RO_PASS=${DATASTORE_READONLY_PASSWORD}
+        - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    environment:
+      - DS_RO_PASS=${DATASTORE_READONLY_PASSWORD}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  solr:
+    container_name: solr
+    image: amazeeio/solr:6.6-ckan
+    volumes:
+      - solr_core:/opt/solr/server/solr
+
+  redis:
+    container_name: redis
+    image: amazeeio/redis:6-latest

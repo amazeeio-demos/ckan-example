@@ -32,7 +32,7 @@ ENV CKAN_HOME /usr/lib/ckan
 ENV CKAN_VENV $CKAN_HOME/venv
 ENV CKAN_CONFIG /etc/ckan
 ENV CKAN_INI /etc/ckan/production.ini
-ENV CKAN_STORAGE_PATH=/var/lib/ckan
+ENV CKAN_STORAGE_PATH /var/lib/ckan
 ENV HOME /root
 
 # Build-time variables specified by docker-compose.yml / .env
@@ -74,9 +74,9 @@ RUN ckan-pip install -e 'git+https://github.com/ckan/ckan.git@ckan-2.9.1#egg=cka
     ckan-pip install uwsgi
 
 # Install CKAN extensions
-### Add Git clone / egg install commands...
 RUN ckan-pip install -e 'git+https://github.com/DataShades/ckanext-xloader@py3#egg=ckanext-xloader' && \
     ckan-pip install -r $CKAN_VENV/src/ckanext-xloader/requirements.txt && \
+    ckan-pip install -U requests[security] && \
     ckan-pip install -e 'git+https://github.com/ckan/ckanext-harvest.git@v1.3.1#egg=ckanext-harvest' && \
     ckan-pip install -r $CKAN_VENV/src/ckanext-harvest/pip-requirements.txt && \
     ckan-pip install -e 'git+https://github.com/DataShades/ckanext-syndicate@py3#egg=ckanext-syndicate' && \

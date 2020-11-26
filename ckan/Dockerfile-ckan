@@ -1,9 +1,9 @@
-FROM debian:buster
+FROM ubuntu:20.10
 
 # Install required system packages
 RUN apt-get -q -y update && \
     DEBIAN_FRONTEND=noninteractive apt-get -q -y upgrade && \
-    apt-get -q -y install \
+    DEBIAN_FRONTEND=noninteractive apt-get -q -y install \
         libbz2-dev \
 	libpq-dev \
 	zlib1g-dev \
@@ -22,7 +22,8 @@ RUN apt-get -q -y update && \
         wget \
         supervisor \
 	curl \
-	locales && \
+	locales \
+	tzdata && \
     apt-get -q clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -33,7 +34,8 @@ RUN echo "LC_ALL=en_AU.UTF-8" >> /etc/environment && \
     echo "en_AU.UTF-8 UTF-8" >> /etc/locale.gen && \
     echo "LANG=en_AU.UTF-8" > /etc/locale.conf && \
     locale-gen en_AU.UTF-8 && \
-    update-locale en_AU.UTF-8
+    update-locale en_AU.UTF-8 && \
+    rm -f /etc/localtime && ln -s /usr/share/zoneinfo/Australia/Sydney /etc/localtime
 
 # PyEnv
 ENV PYENV_ROOT="/opt/pyenv"

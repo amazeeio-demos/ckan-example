@@ -6,15 +6,16 @@ volumes:
   solr_core:
 
 services:
-  ckan:
-    container_name: ckan
+  ckan-web:
+    container_name: ckan-web
     build:
       context: ./ckan
-      dockerfile: Dockerfile-ckan
+      dockerfile: Dockerfile-ckan-web
       args:
           - CKAN_SITE_URL=${CKAN_SITE_URL}
           - CKAN_PORT=${CKAN_PORT}
     links:
+      - ckan-workers
       - pg_db
       - solr
       - redis
@@ -37,15 +38,31 @@ services:
     volumes:
       - ckan_storage:/var/lib/ckan
 
-# Disabled until we can figure out a good way to do this...
-#  workers:
-#    # For jobs and/or harvest workers
-#    container_name: workers
-#    build:
-#      context: ./ckan
-#      dockerfile: Dockerfile-workers
-#    ports:
-#      - "8800:8800"
+  ckan-workers:
+  # For jobs and/or harvest workers
+    container_name: ckan-workers
+    build:
+      context: ./ckan
+      dockerfile: Dockerfile-ckan-workers
+    links:
+      - pg_db
+      - solr
+      - redis
+    ports:
+      - "8800:8800"
+    environment:
+      # Defaults work with linked containers, change to use own Postgres, SolR, Redis or Datapusher
+      - CKAN_SQLALCHEMY_URL=postgresql://ckan:${POSTGRES_PASSWORD}@pg_db/ckan
+      - CKAN_DATASTORE_WRITE_URL=postgresql://ckan:${POSTGRES_PASSWORD}@pg_db/datastore
+      - CKAN_DATASTORE_READ_URL=postgresql://datastore_ro:${DATASTORE_READONLY_PASSWORD}@pg_db/datastore
+      - CKAN_SOLR_URL=http://solr:8983/solr/ckan
+      - CKAN_REDIS_URL=redis://redis:6379/0
+      - CKAN_SITE_URL=${CKAN_SITE_URL}
+      - CKAN_SITE_TITLE=${CKAN_SITE_TITLE}
+      - CKAN_MAX_UPLOAD_SIZE_MB=${CKAN_MAX_UPLOAD_SIZE_MB}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - DS_RO_PASS=${DATASTORE_READONLY_PASSWORD}
+      - CKAN_PORT=${CKAN_PORT}
 
   pg_db:
     container_name: pg_db

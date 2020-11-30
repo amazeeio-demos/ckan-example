@@ -1,0 +1,117 @@
+FROM ubuntu:20.10
+
+# Install required system packages
+RUN apt-get -q -y update && \
+    DEBIAN_FRONTEND=noninteractive apt-get -q -y upgrade && \
+    DEBIAN_FRONTEND=noninteractive apt-get -q -y install \
+        libbz2-dev \
+	libpq-dev \
+	zlib1g-dev \
+        libxml2-dev \
+        libxslt-dev \
+        libgeos-dev \
+        libssl-dev \
+        libffi-dev \
+	libsqlite3-dev \
+	libreadline-gplv2-dev \
+	libncursesw5-dev \
+        postgresql-client \
+        build-essential \
+        git-core \
+        vim \
+        wget \
+        supervisor \
+	curl \
+	locales \
+	tzdata && \
+    apt-get -q clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Define environment variables
+
+# Set the locale
+RUN echo "LC_ALL=en_AU.UTF-8" >> /etc/environment && \
+    echo "en_AU.UTF-8 UTF-8" >> /etc/locale.gen && \
+    echo "LANG=en_AU.UTF-8" > /etc/locale.conf && \
+    locale-gen en_AU.UTF-8 && \
+    update-locale en_AU.UTF-8 && \
+    rm -f /etc/localtime && ln -s /usr/share/zoneinfo/Australia/Sydney /etc/localtime
+
+# PyEnv
+ENV PYENV_ROOT="/opt/pyenv"
+ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
+
+# CKAN variables
+ENV CKAN_HOME /usr/lib/ckan
+ENV CKAN_VENV $CKAN_HOME/venv
+ENV CKAN_CONFIG /etc/ckan
+ENV CKAN_INI /etc/ckan/production.ini
+ENV CKAN_STORAGE_PATH /var/lib/ckan
+ENV HOME /root
+
+# Build-time variables specified by docker-compose.yml / .env
+ARG CKAN_SITE_URL
+ARG CKAN_PORT
+
+# Install PyEnv
+RUN git clone https://github.com/pyenv/pyenv.git /opt/pyenv && \
+    echo -e 'if command -v pyenv 1>/dev/null 2>&1; then\n  eval "$(pyenv init -)"\nfi' >> ~/.bash_profile && \
+    chmod 777 /opt/pyenv && \
+    pyenv install 3.8.6 && \
+    pyenv global 3.8.6
+
+# Create ckan user
+RUN useradd -r -u 1500 -m -c "CKAN account" -s /sbin/nologin ckan
+
+# Setup virtual environment for CKAN
+RUN mkdir -p $CKAN_VENV $CKAN_CONFIG $CKAN_STORAGE_PATH && \
+    python -m venv $CKAN_VENV && \
+    ln -s $CKAN_VENV/bin/pip /usr/local/bin/ckan-pip && \
+    ln -s $CKAN_VENV/bin/ckan /usr/local/bin/ckan && \
+    ln -s $CKAN_VENV/bin/python /usr/local/bin/ckan-python
+
+# Install the required setuptools version and upgrade Pip
+RUN ckan-pip install --upgrade --no-cache-dir setuptools==44.1.0 && \ 
+    ckan-pip install -U pip
+
+# Copy WSGI file and uWSGI configuration
+COPY wsgi.py $CKAN_CONFIG
+COPY ckan-uwsgi.ini $CKAN_CONFIG
+
+# Copy ckan-entrypoint.sh
+COPY ckan-entrypoint.sh /ckan-entrypoint.sh
+
+# Copy templated extension configuration
+COPY extension-configs.ini /extension-configs.ini
+
+# Install CKAN egg and perform setup actions.
+RUN ckan-pip install -e 'git+https://github.com/ckan/ckan.git@ckan-2.9.1#egg=ckan[requirements]' && \
+    ln -s $CKAN_VENV/src/ckan/ckan/config/who.ini $CKAN_CONFIG/who.ini && \
+    chmod +x /ckan-entrypoint.sh && \
+    chown -R ckan:ckan $CKAN_HOME $CKAN_VENV $CKAN_CONFIG $CKAN_STORAGE_PATH && \
+    ckan-pip install uwsgi
+
+# Install CKAN extensions
+RUN ckan-pip install -e 'git+https://github.com/DataShades/ckanext-xloader@py3#egg=ckanext-xloader' && \
+    ckan-pip install -r $CKAN_VENV/src/ckanext-xloader/requirements.txt && \
+    ckan-pip install -U requests[security] && \
+    ckan-pip install -e 'git+https://github.com/DataShades/ckanext-harvest.git@py3#egg=ckanext-harvest' && \
+    ckan-pip install -r $CKAN_VENV/src/ckanext-harvest/pip-requirements.txt && \
+    ckan-pip install -e 'git+https://github.com/DataShades/ckanext-syndicate@py3#egg=ckanext-syndicate' && \
+    ckan-pip install -r $CKAN_VENV/src/ckanext-syndicate/requirements.txt && \
+    ckan-pip install -e 'git+https://github.com/ckan/ckanext-scheming.git@master#egg=ckanext-scheming' && \
+    ckan-pip install -r $CKAN_VENV/src/ckanext-scheming/requirements.txt
+
+# Install crudini for configuration management
+ADD https://raw.githubusercontent.com/pixelb/crudini/master/crudini /usr/local/bin/crudini
+RUN pip install iniparse && \
+    chmod +x /usr/local/bin/crudini
+
+# Copy supervisor configurations for web container
+COPY supervisor.d/supervisord.conf supervisor.d/ckan-uwsgi.conf /etc/supervisor/conf.d/
+
+ENTRYPOINT ["/ckan-entrypoint.sh"]
+
+EXPOSE 5000
+
+CMD ["/usr/bin/supervisord"]

@@ -64,7 +64,7 @@ set_environment
 ckan db init
 
 # Ensure correct permissions for CKAN storage
-mkdir -p $CKAN_STORAGE_PATH/storage && mkdir -p $CKAN_STORAGE_PATH/resources
+mkdir -p $CKAN_STORAGE_PATH/storage/uploads/user && mkdir -p $CKAN_STORAGE_PATH/resources
 chown -R ckan:ckan $CKAN_STORAGE_PATH $CKAN_VENV && chmod -R 777 $CKAN_STORAGE_PATH
 
 # Set site URL
@@ -85,6 +85,9 @@ crudini --set --list --list-sep=' ' $CKAN_INI app:main ckan.plugins xloader
 
 # Set up datastore permissions
 ckan datastore set-permissions | psql "${CKAN_SQLALCHEMY_URL}"
+
+# Set XLoader database URI
+crudini --set --list --list-sep=' ' $CKAN_INI app:main ckanext.xloader.jobs_db.uri $CKAN_SQLALCHEMY_URL
 
 ### Add custom CKAN extensions to configuration
 
